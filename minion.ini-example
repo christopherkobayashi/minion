@@ -1,0 +1,24 @@
+[global]
+mqtt_server = localhost
+mqtt_port = 1883
+
+[kitchen_wall_1]
+device = kitchen_wall
+endpoint = 1
+trigger = 0006!FD
+targets = tp-link-bulb04
+type = tplink
+
+[kitchen_wall_2]
+device = kitchen_wall
+endpoint = 2
+trigger = 0006!FD
+targets = tasmota_D98452
+type = tasmota
+
+[livingroom_wall]
+device = livingroom_wall
+endpoint = 1
+trigger = 0006!FD
+targets = living_room_zb1 living_room_zb2 living_room_zb3
+type = zigbee
