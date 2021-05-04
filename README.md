@@ -11,7 +11,7 @@ Both HomeAssistant and Domoticz are overkill, and both suffer from "shiny syndro
 
 ## How?
 
-Install the paho-mqtt and kasa modules.  Edit "blobs" to associate devices (as seen in the Zigbee coordinator's mqtt topics), triggers (derived from the Tasmota console), and targets (mqtt topic or TP-Link hostname).
+Install the paho-mqtt and kasa modules.  Edit the .ini to associate devices (as seen in the Zigbee coordinator's mqtt topics), triggers (derived from the Tasmota console), and targets (mqtt topic or TP-Link hostname).
 
 ## Notes
 
