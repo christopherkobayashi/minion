@@ -3,17 +3,16 @@
 import sys
 import paho.mqtt.client as mqtt
 import json
+#import schedule
 import time
 import configparser
 import datetime
 import asyncio
 from kasa import SmartBulb
 from typing import NamedTuple
-
-# IKEA
+#import astral
 
 config = []
-blobs = []
 lastfrobbed = {}
 
 class MinionDevice(NamedTuple):
@@ -26,7 +25,7 @@ class MinionDevice(NamedTuple):
 class MinionConfig(NamedTuple):
         mqtt_server:    str
         mqtt_port:      int
-        devices:           list[MinionDevice]
+        devices:        list[MinionDevice]
 
 def read_config(config_file):
         devices = []
@@ -82,31 +81,39 @@ def on_message(client, userdata, msg):
     payload_string=str(msg.payload.decode("utf-8","ignore"))
     payload = json.loads(payload_string)
     for blob in config.devices:
-      try:
         if blob.device in payload["ZbReceived"]:
           print("match %s" % blob.device)
           if blob.trigger in payload["ZbReceived"][blob.device] and blob.endpoint == payload["ZbReceived"][blob.device]["Endpoint"]:
             print("power button hit")
             if int(time.time()) > (lastfrobbed[blob.device]) + 5:
               if blob.type == "tplink":
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                for target in blob.targets:
-                  result = loop.run_until_complete(toggle_bulb(target, "toggle"))
+                try:
+                  loop = asyncio.new_event_loop()
+                  asyncio.set_event_loop(loop)
+                  for target in blob.targets:
+                    result = loop.run_until_complete(toggle_bulb(target, "toggle"))
+                except:
+                  print("something fried with tp-link %s", target)  
               elif blob.type == "tasmota":
                 for target in blob.targets:
-                  print("cmnd/%s/POWER" % target)  
-                  client.publish("cmnd/%s/POWER" % target, payload="TOGGLE")
+                  try:
+                    print("cmnd/%s/POWER" % target)  
+                    client.publish("cmnd/%s/POWER" % target, payload="TOGGLE")
+                  except:
+                    print("something fried with tasmota %s", target)
               elif blob.type == "zigbee":
                 for target in blob.targets:
-                  cmnd = '{"Device":"%s","Send":{"Power": "toggle"}}' % target
-                  print(cmnd)
-                  client.publish("cmnd/zigbee_bridge/ZbSend", payload=cmnd)
+                  try:
+                    cmnd = '{"Device":"%s","Send":{"Power": "toggle"}}' % target
+                    client.publish("cmnd/zigbee_bridge/ZbSend", payload=cmnd)
+                  except:
+                    print("something fried with tasmota %s", target)
+              
               else:
                 print("unhandled type %s" % blob.type)
               lastfrobbed[blob.device] = int(time.time())
-      except:
-        print("something happened, comment the exception handler and try again")
+            else:
+              print("debouncing for five seconds")
 
 def main():
   try:
