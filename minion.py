@@ -30,13 +30,13 @@ class MinionConfig(NamedTuple):
 
 def read_config(config_file):
         devices = []
-        config = configparser.RawConfigParser(strict=False)
+        config = configparser.RawConfigParser()
         config.read(config_file)
         for section in config.sections():
           if section != "global":
             print(section)
             device_parsed = MinionDevice (
-                            section,
+                            config.get (section, 'device'),
                             config.getint (section, 'endpoint'),
                             config.get (section, 'trigger'),
                             config.get (section, 'targets').split(),
