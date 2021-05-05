@@ -72,6 +72,28 @@ async def toggle_bulb(bulb, state):
     else:
       print("weird, %s is neither on nor off", bulb)
 
+def tplink_command(target, command):
+  try:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    result = loop.run_until_complete(toggle_bulb(target, "toggle"))
+  except:
+    print("something fried with tp-link %s", target)
+
+def tasmota_command(target, command):
+  try:
+    client.publish("cmnd/%s/POWER" % target, payload=command)
+  except:
+    print("something fried with tasmota %s", target)
+
+def zigbee_command(target, command):
+  try:
+    cmnd = '{"Device":"%s","Send":{"Power": "toggle"}}' % target  # fixme!
+    client.publish("cmnd/zigbee_bridge/ZbSend", payload=cmnd)
+  except:
+    print("something fried with tasmota %s", target)
+
+
 # The callback for when a PUBLISH message is received from the server.
 def on_message(client, userdata, msg):
     global config
@@ -87,28 +109,14 @@ def on_message(client, userdata, msg):
             print("power button hit")
             if int(time.time()) > (lastfrobbed[blob.device]) + 5:
               if blob.type == "tplink":
-                try:
-                  loop = asyncio.new_event_loop()
-                  asyncio.set_event_loop(loop)
-                  for target in blob.targets:
-                    result = loop.run_until_complete(toggle_bulb(target, "toggle"))
-                except:
-                  print("something fried with tp-link %s", target)  
+                for target in blob.targets:
+                  tplink_command(target, "toggle")
               elif blob.type == "tasmota":
                 for target in blob.targets:
-                  try:
-                    print("cmnd/%s/POWER" % target)  
-                    client.publish("cmnd/%s/POWER" % target, payload="TOGGLE")
-                  except:
-                    print("something fried with tasmota %s", target)
+                  tasmota_command(target, "TOGGLE")
               elif blob.type == "zigbee":
                 for target in blob.targets:
-                  try:
-                    cmnd = '{"Device":"%s","Send":{"Power": "toggle"}}' % target
-                    client.publish("cmnd/zigbee_bridge/ZbSend", payload=cmnd)
-                  except:
-                    print("something fried with tasmota %s", target)
-              
+                  zigbee_command(target, "toggle")
               else:
                 print("unhandled type %s" % blob.type)
               lastfrobbed[blob.device] = int(time.time())
