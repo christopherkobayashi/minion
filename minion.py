@@ -3,7 +3,7 @@
 import sys
 import paho.mqtt.client as mqtt
 import json
-#import schedule
+import schedule
 import time
 import configparser
 import datetime
@@ -25,6 +25,10 @@ class MinionDevice(NamedTuple):
 class MinionConfig(NamedTuple):
         mqtt_server:    str
         mqtt_port:      int
+        nightlight_start: str
+        nightlight_end: str
+        nightlight_targets: list[str]
+        nightlight_targets_type: str
         devices:        list[MinionDevice]
 
 def read_config(config_file):
@@ -45,6 +49,10 @@ def read_config(config_file):
         config_parsed = MinionConfig     (
                         config.get      ('global', 'mqtt_server'),
                         config.getint   ('global', 'mqtt_port'),
+                        config.get      ('global', 'nightlight_start'),
+                        config.get      ('global', 'nightlight_end'),
+                        config.get      ('global', 'nightlight_targets').split(),
+                        config.get      ('global', 'nightlight_targets_type'),
                         devices
                 )
 
@@ -93,6 +101,29 @@ def zigbee_command(target, command):
   except:
     print("something fried with tasmota %s", target)
 
+def nightlight_on():
+  global config
+  for target in config.nightlight_targets:
+    if config.nightlight_targets_type == "tplink":
+      tplink_command(target, "on")
+    elif config.nightlight_targets_type == "tasmota":
+      tasmota_command(target, "ON")
+    elif config.nightlight_targets_type == "zigbee":
+      zigbee_command(target, "on")
+    else:
+      print("nightlight type unknown")
+
+def nightlight_off():
+  global config
+  for target in config.nightlight_targets:
+    if config.nightlight_targets_type == "tplink":
+      tplink_command(target, "off")
+    elif config.nightlight_targets_type == "tasmota":
+      tasmota_command(target, "OFF")
+    elif config.nightlight_targets_type == "zigbee":
+      zigbee_command(target, "off")
+    else:
+      print("nightlight type unknown")
 
 # The callback for when a PUBLISH message is received from the server.
 def on_message(client, userdata, msg):
@@ -137,6 +168,10 @@ def main():
   client.on_message = on_message
 
   client.connect(config.mqtt_server, config.mqtt_port, 60)
+
+  # Schedule nightlight events
+  schedule.every().day.at(config.nightlight_start).do(nightlight_on)
+  schedule.every().day.at(config.nightlight_end).do(nightlight_off)
 
   # Blocking call that processes network traffic, dispatches callbacks and
   # handles reconnecting.
