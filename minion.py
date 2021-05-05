@@ -46,7 +46,7 @@ def read_config(config_file):
                             config.get (section, 'type'),
                             )
             devices.append(device_parsed)
-            lastfrobbed[section] = 0
+            lastfrobbed[device_parsed.device] = 0
         config_parsed = MinionConfig     (
                         config.get      ('global', 'mqtt_server'),
                         config.getint   ('global', 'mqtt_port'),
