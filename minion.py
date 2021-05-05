@@ -130,6 +130,10 @@ def on_message(client, userdata, msg):
     global config
     global lastfrobbed
     print(msg.topic+" "+str(msg.payload))
+
+    # Run scheduled events -- handle this elsewhere?
+    schedule.run_pending()
+
     payload_string=str(msg.payload.decode("utf-8","ignore"))
     payload = json.loads(payload_string)
     for blob in config.devices:
