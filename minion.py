@@ -33,7 +33,6 @@ def read_config(config_file):
         config.read(config_file)
         for section in config.sections():
           if section != "global":
-            print(section)
             device_parsed = MinionDevice (
                             config.get (section, 'device'),
                             config.getint (section, 'endpoint'),
@@ -81,6 +80,7 @@ def on_message(client, userdata, msg):
     payload_string=str(msg.payload.decode("utf-8","ignore"))
     payload = json.loads(payload_string)
     for blob in config.devices:
+      try:
         if blob.device in payload["ZbReceived"]:
           print("match %s" % blob.device)
           if blob.trigger in payload["ZbReceived"][blob.device] and blob.endpoint == payload["ZbReceived"][blob.device]["Endpoint"]:
@@ -114,6 +114,8 @@ def on_message(client, userdata, msg):
               lastfrobbed[blob.device] = int(time.time())
             else:
               print("debouncing for five seconds")
+      except:
+        print("No ZbReceived in payload")
 
 def main():
   try:
