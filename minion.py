@@ -12,6 +12,7 @@ from kasa import SmartBulb
 from typing import NamedTuple
 #import astral
 
+mqtt_client = mqtt.Client()
 config = []
 lastfrobbed = {}
 
@@ -61,9 +62,9 @@ def read_config(config_file):
         
         return config_parsed
 
-def on_connect(client, userdata, flags, rc):
+def on_connect(mqtt_client, userdata, flags, rc):
     print("Connected with result code "+str(rc))
-    client.subscribe("tele/zigbee_bridge/SENSOR/#")
+    mqtt_client.subscribe("tele/zigbee_bridge/SENSOR/#")
 
 async def toggle_bulb(bulb, state):
   p = SmartBulb(bulb)
@@ -89,15 +90,17 @@ def tplink_command(target, command):
     print("something fried with tp-link %s", target)
 
 def tasmota_command(target, command):
+  global mqtt_client
   try:
-    client.publish("cmnd/%s/POWER" % target, payload=command)
+    mqtt_client.publish("cmnd/%s/POWER" % target, payload=command)
   except:
     print("something fried with tasmota %s", target)
 
 def zigbee_command(target, command):
+  global mqtt_client
   try:
     cmnd = '{"Device":"%s","Send":{"Power": "toggle"}}' % target  # fixme!
-    client.publish("cmnd/zigbee_bridge/ZbSend", payload=cmnd)
+    mqtt_client.publish("cmnd/zigbee_bridge/ZbSend", payload=cmnd)
   except:
     print("something fried with tasmota %s", target)
 
@@ -126,7 +129,7 @@ def nightlight_off():
       print("nightlight type unknown")
 
 # The callback for when a PUBLISH message is received from the server.
-def on_message(client, userdata, msg):
+def on_message(mqtt_client, userdata, msg):
     global config
     global lastfrobbed
     print(msg.topic+" "+str(msg.payload))
@@ -161,17 +164,17 @@ def on_message(client, userdata, msg):
         print("No ZbReceived in payload")
 
 def main():
+  global mqtt_client
   try:
     global config
     config = read_config('./minion.ini')
   except:
     print('No configuration file.')
     sys.exit()
-  client = mqtt.Client()
-  client.on_connect = on_connect
-  client.on_message = on_message
+  mqtt_client.on_connect = on_connect
+  mqtt_client.on_message = on_message
 
-  client.connect(config.mqtt_server, config.mqtt_port, 60)
+  mqtt_client.connect(config.mqtt_server, config.mqtt_port, 60)
 
   # Schedule nightlight events
   schedule.every().day.at(config.nightlight_start).do(nightlight_on)
@@ -181,7 +184,7 @@ def main():
   # handles reconnecting.
   # Other loop*() functions are available that give a threaded interface and a
   # manual interface.
-  client.loop_forever()
+  mqtt_client.loop_forever()
 
 if __name__ == "__main__":
     main()
