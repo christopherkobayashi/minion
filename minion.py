@@ -26,6 +26,7 @@ class MinionDevice(NamedTuple):
 class MinionConfig(NamedTuple):
         mqtt_server:    str
         mqtt_port:      int
+        switch_debounce: int
         nightlight_start: str
         nightlight_end: str
         nightlight_targets: list[str]
@@ -50,6 +51,7 @@ def read_config(config_file):
         config_parsed = MinionConfig     (
                         config.get      ('global', 'mqtt_server'),
                         config.getint   ('global', 'mqtt_port'),
+                        config.getint   ('global', 'switch_debounce'),
                         config.get      ('global', 'nightlight_start'),
                         config.get      ('global', 'nightlight_end'),
                         config.get      ('global', 'nightlight_targets').split(),
@@ -79,7 +81,7 @@ async def toggle_bulb(bulb, state):
     elif p.is_on:
       await p.turn_off()
     else:
-      print("weird, %s is neither on nor off", bulb)
+      print("weird, %s is neither on nor off" % bulb)
 
 def tplink_command(target, command):
   try:
@@ -87,14 +89,14 @@ def tplink_command(target, command):
     asyncio.set_event_loop(loop)
     result = loop.run_until_complete(toggle_bulb(target, "toggle"))
   except:
-    print("something fried with tp-link %s", target)
+    print("something fried with tp-link %s" % target)
 
 def tasmota_command(target, command):
   global mqtt_client
   try:
     mqtt_client.publish("cmnd/%s/POWER" % target, payload=command)
   except:
-    print("something fried with tasmota %s", target)
+    print("something fried with tasmota %s" % target)
 
 def zigbee_command(target, command):
   global mqtt_client
@@ -102,7 +104,7 @@ def zigbee_command(target, command):
     cmnd = '{"Device":"%s","Send":{"Power": "toggle"}}' % target  # fixme!
     mqtt_client.publish("cmnd/zigbee_bridge/ZbSend", payload=cmnd)
   except:
-    print("something fried with tasmota %s", target)
+    print("something fried with tasmota %s" % target)
 
 def nightlight_on():
   global config
@@ -132,7 +134,7 @@ def nightlight_off():
 def on_message(mqtt_client, userdata, msg):
     global config
     global lastfrobbed
-    print(msg.topic+" "+str(msg.payload))
+    print(msg.topic, str(msg.payload))
 
     # Run scheduled events -- handle this elsewhere?
     schedule.run_pending()
@@ -145,7 +147,7 @@ def on_message(mqtt_client, userdata, msg):
           print("match %s" % blob.device)
           if blob.trigger in payload["ZbReceived"][blob.device] and blob.endpoint == payload["ZbReceived"][blob.device]["Endpoint"]:
             print("power button hit")
-            if int(time.time()) > (lastfrobbed[blob.device]) + 5:
+            if int(time.time()) > (lastfrobbed[blob.device]) + config.switch_debounce:
               if blob.type == "tplink":
                 for target in blob.targets:
                   tplink_command(target, "toggle")
@@ -159,7 +161,7 @@ def on_message(mqtt_client, userdata, msg):
                 print("unhandled type %s" % blob.type)
               lastfrobbed[blob.device] = int(time.time())
             else:
-              print("debouncing for five seconds")
+              print("debouncing for %i seconds" % config.switch_debounce)
       except:
         print("No ZbReceived in payload")
 
@@ -184,7 +186,11 @@ def main():
   # handles reconnecting.
   # Other loop*() functions are available that give a threaded interface and a
   # manual interface.
-  mqtt_client.loop_forever()
+  while True:
+    try:
+      mqtt_client.loop_forever()
+    except:
+      print("Probably received json.decoder.JSONDecodeError: Invalid control character at")
 
 if __name__ == "__main__":
     main()
