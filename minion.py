@@ -189,6 +189,9 @@ def main():
   while True:
     try:
       mqtt_client.loop_forever()
+    except KeyboardInterrupt:
+      print("Exiting.")
+      sys.exit()
     except:
       print("Probably received json.decoder.JSONDecodeError: Invalid control character at")
 
