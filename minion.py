@@ -114,14 +114,7 @@ def nightlight_on():
 def nightlight_off():
   global config
   for target in config.nightlight_targets:
-    if config.nightlight_targets_type == "tplink":
-      tplink_command(target, "off")
-    elif config.nightlight_targets_type == "tasmota":
-      tasmota_command(target, "OFF")
-    elif config.nightlight_targets_type == "zigbee":
-      zigbee_command(target, "off")
-    else:
-      print("nightlight type unknown")
+    eval(config.nightlight_targets_type + '_command(target, "off")')
 
 # The callback for when a PUBLISH message is received from the server.
 def on_message(mqtt_client, userdata, msg):
@@ -132,8 +125,18 @@ def on_message(mqtt_client, userdata, msg):
     # Run scheduled events -- handle this elsewhere?
     schedule.run_pending()
 
-    payload_string=str(msg.payload.decode("utf-8","ignore"))
-    payload = json.loads(payload_string)
+    try:
+      payload_string = str(msg.payload.decode("utf-8","ignore"))
+    except:
+      print("could not decode UTF-8 payload, ignoring")
+      return
+
+    try:
+      payload = json.loads(payload_string)
+    except:
+      print("json.loads failed, ignoring")
+      return
+
     for blob in config.devices:
       try:
         if blob.device in payload["ZbReceived"]:
@@ -141,17 +144,8 @@ def on_message(mqtt_client, userdata, msg):
           if blob.trigger in payload["ZbReceived"][blob.device] and blob.endpoint == payload["ZbReceived"][blob.device]["Endpoint"]:
             print("power button hit")
             if int(time.time()) > (lastfrobbed[blob.device]) + config.switch_debounce:
-              if blob.type == "tplink":
-                for target in blob.targets:
-                  tplink_command(target, "toggle")
-              elif blob.type == "tasmota":
-                for target in blob.targets:
-                  tasmota_command(target, "TOGGLE")
-              elif blob.type == "zigbee":
-                for target in blob.targets:
-                  zigbee_command(target, "toggle")
-              else:
-                print("unhandled type %s" % blob.type)
+              for target in blob.targets:
+                eval(blob.type + '_command(target, "toggle")')
               lastfrobbed[blob.device] = int(time.time())
             else:
               print("debouncing for %i seconds" % config.switch_debounce)
