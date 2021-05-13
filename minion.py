@@ -94,7 +94,7 @@ def tplink_command(target, command):
 def tasmota_command(target, command):
   global mqtt_client
   try:
-    mqtt_client.publish("cmnd/%s/POWER" % target, payload=command)
+    mqtt_client.publish("cmnd/%s/POWER" % target, payload=command.upper())
   except:
     print("something fried with tasmota %s" % target)
 
@@ -109,14 +109,7 @@ def zigbee_command(target, command):
 def nightlight_on():
   global config
   for target in config.nightlight_targets:
-    if config.nightlight_targets_type == "tplink":
-      tplink_command(target, "on")
-    elif config.nightlight_targets_type == "tasmota":
-      tasmota_command(target, "ON")
-    elif config.nightlight_targets_type == "zigbee":
-      zigbee_command(target, "on")
-    else:
-      print("nightlight type unknown")
+    eval(config.nightlight_targets_type + '_command(target, "on")')
 
 def nightlight_off():
   global config
