@@ -27,6 +27,7 @@ class MinionConfig(NamedTuple):
         mqtt_server:    str
         mqtt_port:      int
         switch_debounce: int
+        goodnight: str
         nightlight_start: str
         nightlight_end: str
         nightlight_targets: list[str]
@@ -52,6 +53,7 @@ def read_config(config_file):
                         config.get      ('global', 'mqtt_server'),
                         config.getint   ('global', 'mqtt_port'),
                         config.getint   ('global', 'switch_debounce'),
+                        config.get      ('global', 'goodnight'),
                         config.get      ('global', 'nightlight_start'),
                         config.get      ('global', 'nightlight_end'),
                         config.get      ('global', 'nightlight_targets').split(),
@@ -105,6 +107,12 @@ def zigbee_command(target, command):
     mqtt_client.publish("cmnd/zigbee_bridge/ZbSend", payload=cmnd)
   except:
     print("something fried with tasmota %s" % target)
+
+def goodnight():
+  global config
+  for target in config.nightlight_targets:
+    if target.targets not in config.nightlight_targets:
+      eval(config.nightlight_targets_type + '_command(target, "off")')
 
 def nightlight_on():
   global config
@@ -168,6 +176,9 @@ def main():
   # Schedule nightlight events
   schedule.every().day.at(config.nightlight_start).do(nightlight_on)
   schedule.every().day.at(config.nightlight_end).do(nightlight_off)
+
+  # Schedule goodnight
+  schedule.every().day.at(config.goodnight).do(goodnight)
 
   # Blocking call that processes network traffic, dispatches callbacks and
   # handles reconnecting.
