@@ -113,11 +113,10 @@ def zigbee_command(target, command):
 
 def goodnight():
   global config
-  targets = []
+  targets = set()
   for target in config.devices:
     for end_target in target.targets:
-      if not end_target in targets:
-        targets.append(end_target)
+      targets.add(end_target)
   for thisone in targets:
     if thisone not in config.nightlight_targets:
         eval(config.nightlight_targets_type + '_command(thisone, "off")')
@@ -187,6 +186,8 @@ def main():
 
   # Schedule goodnight
   schedule.every().day.at(config.goodnight).do(goodnight)
+  goodnight()
+  sys.exit()
 
   # Blocking call that processes network traffic, dispatches callbacks and
   # handles reconnecting.
