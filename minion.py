@@ -87,6 +87,7 @@ async def toggle_bulb(bulb, state):
 
 def tplink_command(target, command):
   try:
+    print("tplink_command:", target)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     result = loop.run_until_complete(toggle_bulb(target, "toggle"))
@@ -96,6 +97,7 @@ def tplink_command(target, command):
 def tasmota_command(target, command):
   global mqtt_client
   try:
+    print("tasmota_command:", target)
     mqtt_client.publish("cmnd/%s/POWER" % target, payload=command.upper())
   except:
     print("something fried with tasmota %s" % target)
@@ -103,6 +105,7 @@ def tasmota_command(target, command):
 def zigbee_command(target, command):
   global mqtt_client
   try:
+    print("zigbee_command:", target)
     cmnd = '{"Device":"%s","Send":{"Power": "toggle"}}' % target  # fixme!
     mqtt_client.publish("cmnd/zigbee_bridge/ZbSend", payload=cmnd)
   except:
@@ -110,9 +113,14 @@ def zigbee_command(target, command):
 
 def goodnight():
   global config
-  for target in config.nightlight_targets:
-    if target.targets not in config.nightlight_targets:
-      eval(config.nightlight_targets_type + '_command(target, "off")')
+  targets = []
+  for target in config.devices:
+    for end_target in target.targets:
+      if not end_target in targets:
+        targets.append(end_target)
+  for thisone in targets:
+    if thisone not in config.nightlight_targets:
+        eval(config.nightlight_targets_type + '_command(thisone, "off")')
 
 def nightlight_on():
   global config
