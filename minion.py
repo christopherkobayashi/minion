@@ -106,7 +106,7 @@ def zigbee_command(target, command):
   global mqtt_client
   try:
     print("zigbee_command:", target)
-    cmnd = '{"Device":"%s","Send":{"Power": "toggle"}}' % target  # fixme!
+    cmnd = '{"Device":"' + target + '","Send":{"Power": "' + command + '"}}'
     mqtt_client.publish("cmnd/zigbee_bridge/ZbSend", payload=cmnd)
   except:
     print("something fried with tasmota %s" % target)
@@ -186,8 +186,6 @@ def main():
 
   # Schedule goodnight
   schedule.every().day.at(config.goodnight).do(goodnight)
-  goodnight()
-  sys.exit()
 
   # Blocking call that processes network traffic, dispatches callbacks and
   # handles reconnecting.
