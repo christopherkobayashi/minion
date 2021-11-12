@@ -58,6 +58,7 @@ def read_config(config_file):
                         config.get      ('global', 'nightlight_end'),
                         config.get      ('global', 'nightlight_targets').split(),
                         config.get      ('global', 'nightlight_targets_type'),
+                        config.get      ('global', 'mqtt_channels').split()
                         devices
                 )
 
@@ -67,8 +68,10 @@ def read_config(config_file):
         return config_parsed
 
 def on_connect(mqtt_client, userdata, flags, rc):
-    print("Connected with result code "+str(rc))
-    mqtt_client.subscribe("tele/zigbee_bridge/SENSOR/#")
+  global config
+  print("Connected with result code", rc)
+  for channel in config.mqtt_channels:
+    mqtt_client.subscribe( channel )
 
 async def toggle_bulb(bulb, state):
   p = SmartBulb(bulb)
@@ -106,7 +109,13 @@ def zigbee_command(target, command):
   global mqtt_client
   try:
     print("zigbee_command:", target)
-    cmnd = '{"Device":"' + target + '","Send":{"Power": "' + command + '"}}'
+    if command == 'DimmerUp':
+      cmnd = '{"device":"' + target + '","send": {"DimmerUp"} }'
+    elif command == 'DimmerDown':
+      cmnd = '{"Device":"' + target + '","Send":{"DimmerDown"}}'
+    else:
+      cmnd = '{"Device":"' + target + '","Send":{"Power": "' + command + '"}}'
+    print("ZbSend: ", cmnd)
     mqtt_client.publish("cmnd/zigbee_bridge/ZbSend", payload=cmnd)
   except:
     print("something fried with tasmota %s" % target)
@@ -152,6 +161,31 @@ def on_message(mqtt_client, userdata, msg):
       print("json.loads failed, ignoring")
       return
 
+
+    topic_split = msg.topic.split('/')
+
+    if topic_split[0] == 'deconz':
+      device = topic_split[-1]
+      print ('deconz, with device "'+device+'"')
+      print(payload)
+      for blob in config.devices:
+        if device == blob.device:
+          print(blob.endpoint, payload['button'])
+          if blob.endpoint == 0 or (payload['button'] is not None and blob.endpoint == int(payload['button'][-1])):
+            print("match:", blob)
+            if payload['button'] is not None:
+              print('button', payload['button'][-1])
+            if int(time.time()) > (lastfrobbed[blob.device]) + config.switch_debounce:
+              for target in blob.targets:
+                eval(blob.type + '_command(target, "toggle")')
+              lastfrobbed[blob.device] = int(time.time())
+            else:
+              print("debouncing for %i seconds" % config.switch_debounce)
+#          return
+      
+      return
+
+    # not deconz, so do legacy stuff
     for blob in config.devices:
       try:
         if blob.device in payload["ZbReceived"]:
@@ -164,6 +198,25 @@ def on_message(mqtt_client, userdata, msg):
               lastfrobbed[blob.device] = int(time.time())
             else:
               print("debouncing for %i seconds" % config.switch_debounce)
+          # we need to do this right
+          elif '0008!06' in payload["ZbReceived"][blob.device] and blob.endpoint == payload["ZbReceived"][blob.device]["Endpoint"]:
+            print("dimmer_up hit")
+            if int(time.time()) > (lastfrobbed[blob.device]) + config.switch_debounce:
+              for target in blob.targets:
+                eval(blob.type + '_command(target, "DimmerUp")')
+              lastfrobbed[blob.device] = int(time.time())
+            else:
+              print("debouncing for %i seconds" % config.switch_debounce)
+          # we need to do this right
+          elif '0008!02' in payload["ZbReceived"][blob.device] and blob.endpoint == payload["ZbReceived"][blob.device]["Endpoint"]:
+            print("dimmer_down hit")
+            if int(time.time()) > (lastfrobbed[blob.device]) + config.switch_debounce:
+              for target in blob.targets:
+                eval(blob.type + '_command(target, "DimmerDown")')
+              lastfrobbed[blob.device] = int(time.time())
+            else:
+              print("debouncing for %i seconds" % config.switch_debounce)
+
       except:
         print("No ZbReceived in payload")
 
@@ -197,8 +250,6 @@ def main():
     except KeyboardInterrupt:
       print("Exiting.")
       sys.exit()
-    except:
-      print("Probably received json.decoder.JSONDecodeError: Invalid control character at")
 
 if __name__ == "__main__":
     main()
