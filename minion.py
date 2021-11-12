@@ -10,6 +10,7 @@ import datetime
 import asyncio
 from kasa import SmartBulb
 from typing import NamedTuple
+from datetime import datetime
 #import astral
 
 mqtt_client = mqtt.Client()
@@ -64,13 +65,13 @@ def read_config(config_file):
                 )
 
         for device in config_parsed.devices:
-          print("registered:", device.device, "endpoint:", device.endpoint, "targets:", device.targets)
+          print(datetime.now(), "registered:", device.device, "endpoint:", device.endpoint, "targets:", device.targets)
         
         return config_parsed
 
 def on_connect(mqtt_client, userdata, flags, rc):
   global config
-  print("Connected with result code", rc)
+  print(datetime.now(), "Connected with result code", rc)
   for channel in config.mqtt_channels:
     mqtt_client.subscribe( channel )
 
@@ -87,39 +88,39 @@ async def toggle_bulb(bulb, state):
     elif p.is_on:
       await p.turn_off()
     else:
-      print("weird, %s is neither on nor off" % bulb)
+      print(datetime.now(), "weird, %s is neither on nor off" % bulb)
 
 def tplink_command(target, command):
   try:
-    print("tplink_command:", target)
+    print(datetime.now(), "tplink_command:", target)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     result = loop.run_until_complete(toggle_bulb(target, "toggle"))
   except:
-    print("something fried with tp-link %s" % target)
+    print(datetime.now(), "something fried with tp-link %s" % target)
 
 def tasmota_command(target, command):
   global mqtt_client
   try:
-    print("tasmota_command:", target)
+    print(datetime.now(), "tasmota_command:", target)
     mqtt_client.publish("cmnd/%s/POWER" % target, payload=command.upper())
   except:
-    print("something fried with tasmota %s" % target)
+    print(datetime.now(), "something fried with tasmota %s" % target)
 
 def zigbee_command(target, command):
   global mqtt_client
   try:
-    print("zigbee_command:", target)
+    print(datetime.now(), "zigbee_command:", target)
     if command == 'DimmerUp':
       cmnd = '{"device":"' + target + '","send": {"DimmerUp"} }'
     elif command == 'DimmerDown':
       cmnd = '{"Device":"' + target + '","Send":{"DimmerDown"}}'
     else:
       cmnd = '{"Device":"' + target + '","Send":{"Power": "' + command + '"}}'
-    print("ZbSend: ", cmnd)
+    print(datetime.now(), "ZbSend: ", cmnd)
     mqtt_client.publish("cmnd/zigbee_bridge/ZbSend", payload=cmnd)
   except:
-    print("something fried with tasmota %s" % target)
+    print(datetime.now(), "something fried with tasmota %s" % target)
 
 def goodnight():
   global config
@@ -145,7 +146,6 @@ def nightlight_off():
 def on_message(mqtt_client, userdata, msg):
     global config
     global lastfrobbed
-    print(msg.topic, str(msg.payload))
 
     # Run scheduled events -- handle this elsewhere?
     schedule.run_pending()
@@ -153,13 +153,13 @@ def on_message(mqtt_client, userdata, msg):
     try:
       payload_string = str(msg.payload.decode("utf-8","ignore"))
     except:
-      print("could not decode UTF-8 payload, ignoring")
+      print(datetime.now(), "could not decode UTF-8 payload, ignoring")
       return
 
     try:
       payload = json.loads(payload_string)
     except:
-      print("json.loads failed, ignoring")
+      print(datetime.now(), "json.loads failed, ignoring")
       return
 
 
@@ -167,21 +167,16 @@ def on_message(mqtt_client, userdata, msg):
 
     if topic_split[0] == 'deconz':
       device = topic_split[-1]
-      print ('deconz, with device "'+device+'"')
-      print(payload)
+      print (datetime.now(), 'deconz, with device "'+device+'"')
       for blob in config.devices:
         if device == blob.device:
-          print(blob.endpoint, payload['button'])
           if payload['button'] is not None and blob.endpoint == int(payload['button'][-1]):
-            print("match:", blob)
-            if payload['button'] is not None:
-              print('button', payload['button'][-1])
             if int(time.time()) > (lastfrobbed[blob.device]) + config.switch_debounce:
               for target in blob.targets:
                 eval(blob.type + '_command(target, "toggle")')
               lastfrobbed[blob.device] = int(time.time())
             else:
-              print("debouncing for %i seconds" % config.switch_debounce)
+              print(datetime.now(), "debouncing for %i seconds" % config.switch_debounce)
 #          return
       
       return
@@ -190,36 +185,36 @@ def on_message(mqtt_client, userdata, msg):
     for blob in config.devices:
       try:
         if blob.device in payload["ZbReceived"]:
-          print("match %s" % blob.device)
+          print(datetime.now(), "match %s" % blob.device)
           if blob.trigger in payload["ZbReceived"][blob.device] and blob.endpoint == payload["ZbReceived"][blob.device]["Endpoint"]:
-            print("power button hit")
+            print(datetime.now(), "power button hit")
             if int(time.time()) > (lastfrobbed[blob.device]) + config.switch_debounce:
               for target in blob.targets:
                 eval(blob.type + '_command(target, "toggle")')
               lastfrobbed[blob.device] = int(time.time())
             else:
-              print("debouncing for %i seconds" % config.switch_debounce)
+              print(datetime.now(), "debouncing for %i seconds" % config.switch_debounce)
           # we need to do this right
           elif '0008!06' in payload["ZbReceived"][blob.device] and blob.endpoint == payload["ZbReceived"][blob.device]["Endpoint"]:
-            print("dimmer_up hit")
+            print(datetime.now(), "dimmer_up hit")
             if int(time.time()) > (lastfrobbed[blob.device]) + config.switch_debounce:
               for target in blob.targets:
                 eval(blob.type + '_command(target, "DimmerUp")')
               lastfrobbed[blob.device] = int(time.time())
             else:
-              print("debouncing for %i seconds" % config.switch_debounce)
+              print(datetime.now(), "debouncing for %i seconds" % config.switch_debounce)
           # we need to do this right
           elif '0008!02' in payload["ZbReceived"][blob.device] and blob.endpoint == payload["ZbReceived"][blob.device]["Endpoint"]:
-            print("dimmer_down hit")
+            print(datetime.now(), "dimmer_down hit")
             if int(time.time()) > (lastfrobbed[blob.device]) + config.switch_debounce:
               for target in blob.targets:
                 eval(blob.type + '_command(target, "DimmerDown")')
               lastfrobbed[blob.device] = int(time.time())
             else:
-              print("debouncing for %i seconds" % config.switch_debounce)
+              print(datetime.now(), "debouncing for %i seconds" % config.switch_debounce)
 
       except:
-        print("No ZbReceived in payload")
+        print(datetime.now(), "No ZbReceived in payload")
 
 def main():
   global mqtt_client
@@ -245,7 +240,7 @@ def main():
     try:
       mqtt_client.loop_forever()
     except KeyboardInterrupt:
-      print("Exiting.")
+      print(datetime.now(), "Exiting.")
       sys.exit()
 
 if __name__ == "__main__":
