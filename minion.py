@@ -32,6 +32,7 @@ class MinionConfig(NamedTuple):
         nightlight_end: str
         nightlight_targets: list[str]
         nightlight_targets_type: str
+        mqtt_channels: list[str]
         devices:        list[MinionDevice]
 
 def read_config(config_file):
@@ -58,7 +59,7 @@ def read_config(config_file):
                         config.get      ('global', 'nightlight_end'),
                         config.get      ('global', 'nightlight_targets').split(),
                         config.get      ('global', 'nightlight_targets_type'),
-                        config.get      ('global', 'mqtt_channels').split()
+                        config.get      ('global', 'mqtt_channels').split(),
                         devices
                 )
 
@@ -222,12 +223,8 @@ def on_message(mqtt_client, userdata, msg):
 
 def main():
   global mqtt_client
-  try:
-    global config
-    config = read_config('./minion.ini')
-  except:
-    print('No configuration file.')
-    sys.exit()
+  global config
+  config = read_config('./minion.ini')
   mqtt_client.on_connect = on_connect
   mqtt_client.on_message = on_message
 
