@@ -171,7 +171,7 @@ def on_message(mqtt_client, userdata, msg):
       for blob in config.devices:
         if device == blob.device:
           print(blob.endpoint, payload['button'])
-          if blob.endpoint == 0 or (payload['button'] is not None and blob.endpoint == int(payload['button'][-1])):
+          if payload['button'] is not None and blob.endpoint == int(payload['button'][-1]):
             print("match:", blob)
             if payload['button'] is not None:
               print('button', payload['button'][-1])
