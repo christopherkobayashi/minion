@@ -8,14 +8,24 @@ import time
 import configparser
 import datetime
 import asyncio
+import aiohttp
+import websockets
 from kasa import SmartBulb
 from typing import NamedTuple
 from datetime import datetime
-#import astral
+from datetime import timedelta
+from suntime import Sun, SunTimeException
+from geopy import Nominatim
 
 mqtt_client = mqtt.Client()
 config = []
 lastfrobbed = {}
+sunset_job = datetime.now()
+sunrise_job = datetime.now()
+
+class SunStuff(NamedTuple):
+        sunrise:        datetime
+        sunset:         datetime
 
 class MinionDevice(NamedTuple):
         device:         str
@@ -27,7 +37,10 @@ class MinionDevice(NamedTuple):
 class MinionConfig(NamedTuple):
         mqtt_server:    str
         mqtt_port:      int
+        websocket:      str
+        rest:           str
         switch_debounce: int
+        location: str
         goodnight: str
         nightlight_start: str
         nightlight_end: str
@@ -44,17 +57,20 @@ def read_config(config_file):
           if section != "global":
             device_parsed = MinionDevice (
                             config.get (section, 'device'),
-                            config.getint (section, 'endpoint'),
-                            config.get (section, 'trigger'),
+                            config.getint (section, 'endpoint', fallback=1),
+                            config.get (section, 'trigger', fallback='dummy'),
                             config.get (section, 'targets').split(),
-                            config.get (section, 'type'),
+                            config.get (section, 'type', fallback='tasmota'),
                             )
             devices.append(device_parsed)
             lastfrobbed[device_parsed.device] = 0
         config_parsed = MinionConfig     (
-                        config.get      ('global', 'mqtt_server'),
-                        config.getint   ('global', 'mqtt_port'),
-                        config.getint   ('global', 'switch_debounce'),
+                        config.get      ('global', 'mqtt_server', fallback='localhost'),
+                        config.getint   ('global', 'mqtt_port', fallback=1883),
+                        config.get      ('global', 'websocket', fallback='ws://localhost:443/'),
+                        config.get      ('global', 'rest', fallback='http://localhost/api/CHANGEME/'),
+                        config.getint   ('global', 'switch_debounce', fallback=3),
+                        config.get      ('global', 'location', fallback='Tokyo Japan'),
                         config.get      ('global', 'goodnight'),
                         config.get      ('global', 'nightlight_start'),
                         config.get      ('global', 'nightlight_end'),
@@ -69,11 +85,64 @@ def read_config(config_file):
         
         return config_parsed
 
+def get_sunstuff(location):
+  geolocator = Nominatim(user_agent='myapplication')
+  location = geolocator.geocode(location)
+  sun = Sun(location.latitude, location.longitude)
+  return SunStuff( sun.get_local_sunrise_time(), sun.get_local_sunset_time())
+
 def on_connect(mqtt_client, userdata, flags, rc):
   global config
   print(datetime.now(), "Connected with result code", rc)
   for channel in config.mqtt_channels:
     mqtt_client.subscribe( channel )
+
+async def extend_websocket_data(websocket_json):
+  global config
+  async with aiohttp.ClientSession() as session:
+
+    handlers = {
+                 "sensors": "sensors/" + websocket_json['id'],
+                 "lights": "lights/" + websocket_json['id'],
+                 "groups": "groups/" + websocket_json['id'],
+               }
+
+    try:
+      if websocket_json['r'] in handlers:
+        print(config.rest + handlers[websocket_json['r']])
+        response = await rest_fetch(session, config.rest + handlers[websocket_json['r']])
+        return json.loads(response)
+    except:
+      print(f"No extended REST data available for {websocket_json['r']}")
+      pass
+                
+    return {}
+
+async def websocket_message_loop(websocket):
+  async for message in websocket:
+    print(f"<<deconz<< {message}")
+    message_json = json.loads(message)
+
+    rest_extended_data = await extend_websocket_data(message_json)
+
+    print("we are here0")
+
+#    topic = mqtt_topic_function(message_json, rest_extended_data)
+#    print("we are here1")
+#    message = mqtt_message_function(message_json, rest_extended_data)
+#    print("we are here2")
+
+#    print(f">>mqtt>> topic: {topic}: {message}")
+#    await send_mqtt(topic, message)
+
+async def receive_deconz_messages():
+  global config
+  while True:
+    try:
+      async with websockets.connect(config.websocket) as websocket:
+        await websocket_message_loop(websocket)
+    except:
+      pass
 
 async def toggle_bulb(bulb, state):
   p = SmartBulb(bulb)
@@ -134,13 +203,35 @@ def goodnight():
 
 def nightlight_on():
   global config
+  global sunrise_job
+  global sunset_job
   for target in config.nightlight_targets:
     eval(config.nightlight_targets_type + '_command(target, "on")')
+  schedule.cancel_job(sunset_job)
+
+  geolocator = Nominatim(user_agent='myapplication')
+  location = geolocator.geocode(config.location)
+  sun = Sun(location.latitude, location.longitude)
+  sunrise = sun.get_local_sunrise_time()
+  do_sunrise = sun.get_local_sunrise_time() + timedelta(minutes=30)
+  print(datetime.now(), 'Scheduling sunrise for', do_sunrise.strftime('%H:%M'))
+  sunrise_job = schedule.every().day.at(do_sunrise.strftime('%H:%M')).do(nightlight_off)
 
 def nightlight_off():
   global config
+  global sunrise_job
+  global sunset_job
   for target in config.nightlight_targets:
     eval(config.nightlight_targets_type + '_command(target, "off")')
+  schedule.cancel_job(sunrise_job)
+
+  geolocator = Nominatim(user_agent='myapplication')
+  location = geolocator.geocode(config.location)
+  sun = Sun(location.latitude, location.longitude)
+  sunset = sun.get_local_sunset_time()
+  do_sunset = sun.get_local_sunset_time() - timedelta(minutes=30)
+  print(datetime.now(), 'Scheduling today sunset for', do_sunset.strftime('%H:%M'))     
+  sunset_job = schedule.every().day.at(do_sunset.strftime('%H:%M')).do(nightlight_on)
 
 # The callback for when a PUBLISH message is received from the server.
 def on_message(mqtt_client, userdata, msg):
@@ -173,6 +264,7 @@ def on_message(mqtt_client, userdata, msg):
           if payload['button'] is not None and blob.endpoint == int(payload['button'][-1]):
             if int(time.time()) > (lastfrobbed[blob.device]) + config.switch_debounce:
               for target in blob.targets:
+                print(datetime.now(), 'toggling target', target)
                 eval(blob.type + '_command(target, "toggle")')
               lastfrobbed[blob.device] = int(time.time())
             else:
@@ -217,6 +309,7 @@ def on_message(mqtt_client, userdata, msg):
         print(datetime.now(), "No ZbReceived in payload")
 
 def main():
+  global sunset_job
   global mqtt_client
   global config
   config = read_config('./minion.ini')
@@ -225,9 +318,17 @@ def main():
 
   mqtt_client.connect(config.mqtt_server, config.mqtt_port, 60)
 
+  geolocator = Nominatim(user_agent='myapplication')
+  location = geolocator.geocode(config.location)
+
+  sun = Sun(location.latitude, location.longitude)
+  sunset = sun.get_local_sunset_time()
+  do_sunset = sun.get_local_sunset_time() - timedelta(minutes=30)
+  print(datetime.now(), 'First sunset at', sunset.strftime('%H:%M'))
+  print(datetime.now(), 'Scheduling today sunset for', do_sunset.strftime('%H:%M'))
+
   # Schedule nightlight events
-  schedule.every().day.at(config.nightlight_start).do(nightlight_on)
-  schedule.every().day.at(config.nightlight_end).do(nightlight_off)
+  sunset_job = schedule.every().day.at(do_sunset.strftime('%H:%M')).do(nightlight_on)
 
   # Schedule goodnight
   schedule.every().day.at(config.goodnight).do(goodnight)
@@ -238,6 +339,7 @@ def main():
   # manual interface.
   while True:
     try:
+      #asyncio.get_event_loop().run_until_complete(receive_deconz_messages())
       mqtt_client.loop_forever()
     except KeyboardInterrupt:
       print(datetime.now(), "Exiting.")
