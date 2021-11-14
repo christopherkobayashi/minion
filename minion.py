@@ -41,9 +41,6 @@ class MinionConfig(NamedTuple):
         rest:           str
         switch_debounce: int
         location: str
-        goodnight: str
-        nightlight_start: str
-        nightlight_end: str
         nightlight_targets: list[str]
         nightlight_targets_type: str
         mqtt_channels: list[str]
@@ -71,9 +68,6 @@ def read_config(config_file):
                         config.get      ('global', 'rest', fallback='http://localhost/api/CHANGEME/'),
                         config.getint   ('global', 'switch_debounce', fallback=3),
                         config.get      ('global', 'location', fallback='Tokyo Japan'),
-                        config.get      ('global', 'goodnight'),
-                        config.get      ('global', 'nightlight_start'),
-                        config.get      ('global', 'nightlight_end'),
                         config.get      ('global', 'nightlight_targets').split(),
                         config.get      ('global', 'nightlight_targets_type'),
                         config.get      ('global', 'mqtt_channels').split(),
@@ -212,7 +206,7 @@ def nightlight_on():
   geolocator = Nominatim(user_agent='myapplication')
   location = geolocator.geocode(config.location)
   sun = Sun(location.latitude, location.longitude)
-  sunrise = sun.get_local_sunrise_time()
+  sunrise = sun.get_local_sunrise_time(datetime.today() + timedelta(days=1))
   do_sunrise = sun.get_local_sunrise_time() + timedelta(minutes=30)
   print(datetime.now(), 'Scheduling sunrise for', do_sunrise.strftime('%H:%M'))
   sunrise_job = schedule.every().day.at(do_sunrise.strftime('%H:%M')).do(nightlight_off)
@@ -331,7 +325,7 @@ def main():
   sunset_job = schedule.every().day.at(do_sunset.strftime('%H:%M')).do(nightlight_on)
 
   # Schedule goodnight
-  schedule.every().day.at(config.goodnight).do(goodnight)
+#  schedule.every().day.at(config.goodnight).do(goodnight)
 
   # Blocking call that processes network traffic, dispatches callbacks and
   # handles reconnecting.
